@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const {
-  register, login, getMe, updateProfile,
+  register, login, getMe, updateProfile, deleteProfile,
   getOfficers, approveOfficer, deleteOfficer, verifyEmail
 } = require('../controllers/authController');
 const { protect, authorize } = require('../middleware/authMiddleware');
@@ -11,6 +11,7 @@ router.post('/login', login);
 router.get('/verify-email', verifyEmail);
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
+router.delete('/profile', protect, deleteProfile);
 
 // Chief Officer only
 router.get('/officers', protect, authorize('superadmin'), getOfficers);

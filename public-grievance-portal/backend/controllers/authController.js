@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Grievance = require('../models/Grievance');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -317,11 +318,42 @@ const verifyEmail = async (req, res) => {
   }
 };
 
+// DELETE /api/auth/profile (delete current user profile)
+const deleteProfile = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Safety: Chief Municipal Officer account cannot be self-deleted
+    if (req.user.role === 'superadmin') {
+      return res.status(400).json({
+        success: false,
+        message: 'The Chief Municipal Officer (Super Admin) account cannot be deleted.'
+      });
+    }
+
+    // Clean up grievances filed by the citizen
+    if (req.user.role === 'citizen') {
+      await Grievance.deleteMany({ citizen: userId });
+    }
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({
+      success: true,
+      message: 'Your account has been deleted successfully.'
+    });
+  } catch (error) {
+    console.error('[Delete Profile Error]:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to delete profile' });
+  }
+};
+
 module.exports = {
   register,
   login,
   getMe,
   updateProfile,
+  deleteProfile,
   getOfficers,
   approveOfficer,
   deleteOfficer,
