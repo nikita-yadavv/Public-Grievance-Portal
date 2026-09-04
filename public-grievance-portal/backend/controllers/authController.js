@@ -12,7 +12,7 @@ const generateToken = (id) => {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, password, role, department } = req.body;
+    const { name, email, phone, password, role, department } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Please provide name, email, and password' });
@@ -29,12 +29,13 @@ const register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Generate a one-time token for email verification
+    // Generate a token for optional email verification
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
     const user = await User.create({
       name,
       email: email.toLowerCase(),
+      phone: (phone || '').trim(),
       password: hashedPassword,
       role: assignedRole,
       department: department || (isOfficer ? 'Public Works' : 'General'),
@@ -43,7 +44,7 @@ const register = async (req, res) => {
       emailVerificationToken: verificationToken
     });
 
-    // Send verification email
+    // Send verification email in background (optional verification)
     let emailResult = null;
     try {
       emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
@@ -60,11 +61,12 @@ const register = async (req, res) => {
         isPendingApproval: true,
         verificationUrl,
         previewUrl,
-        message: 'Officer registration submitted! Please verify your email to continue. After email verification, the Chief Municipal Officer will review and approve your account.',
+        message: 'Officer registration submitted! After review, the Chief Municipal Officer will approve your account.',
         user: {
           id: user._id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
           role: user.role,
           department: user.department,
           isApproved: false,
@@ -73,16 +75,20 @@ const register = async (req, res) => {
       });
     }
 
+    // Citizens can sign in immediately
+    const token = generateToken(user._id);
+
     res.status(201).json({
       success: true,
-      needsVerification: true,
+      token,
       verificationUrl,
       previewUrl,
-      message: `Account created! Please verify your email to activate your account.`,
+      message: 'Account created successfully! You can sign in immediately.',
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         role: user.role,
         department: user.department,
         isEmailVerified: false
@@ -97,22 +103,31 @@ const register = async (req, res) => {
 // POST /api/auth/login
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const identifier = (req.body.identifier || req.body.email || req.body.phone || '').trim();
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Please provide email and password' });
+    if (!identifier || !password) {
+      return res.status(400).json({ success: false, message: 'Please provide email or phone number and password' });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // Find user by either email or phone number
+    const user = await User.findOne({
+      $or: [
+        { email: identifier.toLowerCase() },
+        { phone: identifier }
+      ]
+    });
+
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return res.status(401).json({ success: false, message: 'Invalid email/phone number or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      return res.status(401).json({ success: false, message: 'Invalid email/phone number or password' });
     }
 
+    // Officers still require Chief Officer approval
     if (user.role === 'admin' && user.isApproved === false) {
       return res.status(403).json({
         success: false,
@@ -121,15 +136,7 @@ const login = async (req, res) => {
       });
     }
 
-    // Superadmin accounts are pre-verified during seeding
-    if (user.role !== 'superadmin' && user.isEmailVerified === false) {
-      return res.status(403).json({
-        success: false,
-        isEmailUnverified: true,
-        message: 'Please verify your email address before signing in. Check your inbox for the verification link.'
-      });
-    }
-
+    // Email verification is optional — does not block login!
     const token = generateToken(user._id);
 
     res.status(200).json({
@@ -140,9 +147,11 @@ const login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || '',
         role: user.role,
         department: user.department,
-        isApproved: user.isApproved
+        isApproved: user.isApproved,
+        isEmailVerified: user.isEmailVerified
       }
     });
   } catch (error) {
@@ -169,9 +178,10 @@ const updateProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const { name, email, password } = req.body;
+    const { name, email, phone, password } = req.body;
 
     if (name) user.name = name;
+    if (phone !== undefined) user.phone = phone.trim();
 
     if (email && email.toLowerCase() !== user.email) {
       const emailExists = await User.findOne({ email: email.toLowerCase() });
@@ -198,7 +208,9 @@ const updateProfile = async (req, res) => {
         id: updatedUser._id,
         name: updatedUser.name,
         email: updatedUser.email,
-        role: updatedUser.role
+        phone: updatedUser.phone || '',
+        role: updatedUser.role,
+        department: updatedUser.department
       }
     });
   } catch (error) {

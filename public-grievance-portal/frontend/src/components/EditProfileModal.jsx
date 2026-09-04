@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Lock, X, Check, AlertCircle, Trash2, AlertTriangle } from 'lucide-react';
+import { User, Mail, Phone, Lock, X, Check, AlertCircle, Trash2, AlertTriangle } from 'lucide-react';
 import API from '../services/api';
 
 /**
@@ -12,6 +12,7 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -23,6 +24,7 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
     if (isOpen && currentUser) {
       setName(currentUser.name || '');
       setEmail(currentUser.email || '');
+      setPhone(currentUser.phone || '');
       setPassword('');
       setMessage({ type: '', text: '' });
       setShowConfirmDelete(false);
@@ -37,7 +39,7 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
     setMessage({ type: '', text: '' });
 
     try {
-      const payload = { name, email };
+      const payload = { name, email, phone };
       if (password.trim()) {
         payload.password = password;
       }
@@ -52,7 +54,8 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
         const updatedUser = {
           ...stored.user,
           name: res.data.user.name,
-          email: res.data.user.email
+          email: res.data.user.email,
+          phone: res.data.user.phone || phone
         };
         stored.user = updatedUser;
         localStorage.setItem('grievance_user', JSON.stringify(stored));
@@ -145,6 +148,19 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter email address"
                   required
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Phone Number (for sign in)</label>
+              <div className="input-with-icon">
+                <Phone size={18} />
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g. 9876543210"
                 />
               </div>
             </div>

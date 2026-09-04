@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus, User, Mail, Lock, ShieldCheck, Building2, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { UserPlus, User, Mail, Phone, Lock, ShieldCheck, Building2, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import API from '../services/api';
 
 const Register = () => {
@@ -8,6 +8,7 @@ const Register = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     role: 'citizen',
     department: 'Water Supply Department'
@@ -108,47 +109,42 @@ const Register = () => {
         )}
 
         {successMsg && (
-          <div className="alert-success-box" style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
-            <CheckCircle2 size={36} style={{ color: '#10b981', margin: '0 auto 8px auto' }} />
+          <div className="alert-success-box" style={{ textAlign: 'center', padding: '1.75rem 1rem' }}>
+            <CheckCircle2 size={40} style={{ color: '#10b981', margin: '0 auto 10px auto' }} />
             <div>
-              <strong style={{ fontSize: '1.15rem', display: 'block', marginBottom: '6px' }}>
-                🎉 Registration Submitted!
+              <strong style={{ fontSize: '1.25rem', display: 'block', marginBottom: '8px' }}>
+                🎉 Account Registered Successfully!
               </strong>
-              <p style={{ fontSize: '0.9rem', color: '#4b5563', marginBottom: '1rem' }}>{successMsg}</p>
-
-              {verificationUrl && (
-                <div style={{ margin: '1rem 0' }}>
-                  <a
-                    href={verificationUrl}
-                    className="btn btn-primary"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: 700 }}
-                  >
-                    ⚡ Click Here to Verify Email (Instant)
-                  </a>
-                </div>
-              )}
-
-              {previewUrl && (
-                <div style={{ margin: '0.5rem 0' }}>
-                  <a
-                    href={previewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
-                  >
-                    📬 Open Ethereal Test Mailbox
-                  </a>
-                </div>
-              )}
-
-              <p style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.75rem', background: '#f5f3ff', padding: '8px', borderRadius: '8px', border: '1px solid #ddd6fe' }}>
-                💡 <em>Development Mode:</em> Real emails are not dispatched across public internet without live SMTP credentials. Use the <strong>Instant Verify</strong> button above to activate your account.
+              <p style={{ fontSize: '0.92rem', color: '#4b5563', marginBottom: '1.25rem' }}>
+                {formData.role === 'admin'
+                  ? 'Officer registration submitted! After review, the Chief Municipal Officer will approve your access.'
+                  : 'You can now sign in immediately using your Phone Number or Email.'}
               </p>
 
-              <Link to="/login" className="btn btn-sm btn-secondary" style={{ marginTop: '1rem', display: 'inline-block' }}>
-                Back to Sign In
-              </Link>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <Link
+                  to="/login"
+                  className="btn btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: 700, fontSize: '0.95rem' }}
+                >
+                  Proceed to Sign In
+                </Link>
+              </div>
+
+              {verificationUrl && (
+                <div style={{ borderTop: '1px solid #ede9fe', paddingTop: '1rem', marginTop: '1rem' }}>
+                  <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '8px' }}>
+                    Email verification is optional, but if you wish to verify your email address:
+                  </p>
+                  <a
+                    href={verificationUrl}
+                    className="btn btn-sm btn-secondary"
+                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                  >
+                    ✉️ Verify Email Now (Optional)
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -179,6 +175,21 @@ const Register = () => {
                   name="email"
                   placeholder="nikita@example.com"
                   value={formData.email}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Phone Number (for sign in & notifications)</label>
+              <div className="input-with-icon">
+                <Phone size={18} />
+                <input
+                  type="tel"
+                  name="phone"
+                  placeholder="e.g. 9876543210"
+                  value={formData.phone}
                   onChange={handleChange}
                   required
                 />

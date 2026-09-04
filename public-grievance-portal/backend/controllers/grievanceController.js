@@ -1,4 +1,5 @@
 const Grievance = require('../models/Grievance');
+const { sendGrievanceStatusUpdateEmail } = require('../utils/emailService');
 
 // POST /api/grievances
 const createGrievance = async (req, res) => {
@@ -128,6 +129,16 @@ const updateGrievanceStatus = async (req, res) => {
     const populated = await Grievance.findById(updatedGrievance._id)
       .populate('user', 'name email')
       .populate('updatedBy', 'name email role department');
+
+    // Notify citizen by email if their email is available
+    if (populated.user && populated.user.email) {
+      sendGrievanceStatusUpdateEmail(
+        populated.user.email,
+        populated.user.name,
+        populated,
+        req.user
+      ).catch((err) => console.error('[Notification Email Error]:', err.message));
+    }
 
     res.status(200).json({ success: true, message: 'Grievance status updated successfully', grievance: populated });
   } catch (error) {

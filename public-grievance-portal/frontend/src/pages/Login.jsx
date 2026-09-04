@@ -95,13 +95,13 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label>Email Address</label>
+            <label>Phone Number or Email Address</label>
             <div className="input-with-icon">
               <Mail size={18} />
               <input
-                type="email"
+                type="text"
                 name="email"
-                placeholder="name@domain.com"
+                placeholder="e.g. 9876543210 or name@domain.com"
                 value={formData.email}
                 onChange={handleChange}
                 required
