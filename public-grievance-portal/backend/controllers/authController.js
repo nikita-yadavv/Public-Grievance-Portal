@@ -343,18 +343,44 @@ const verifyEmail = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Verification token is missing' });
     }
 
-    const user = await User.findOne({ emailVerificationToken: token });
+    let user = await User.findOne({
+      $or: [
+        { emailVerificationToken: token },
+        { previousVerificationToken: token }
+      ]
+    });
 
     if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired verification link. Please register again.' });
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification link.' });
     }
 
     if (user.isEmailVerified) {
-      return res.status(200).json({ success: true, alreadyVerified: true, message: 'Your email is already verified. You can sign in.' });
+      const jwtToken = generateToken(user._id);
+      return res.status(200).json({
+        success: true,
+        alreadyVerified: true,
+        message: 'Your email has already been verified! Redirecting...',
+        token: jwtToken,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone || '',
+          role: user.role,
+          department: user.department,
+          isApproved: user.isApproved,
+          isEmailVerified: true,
+          isPhoneVerified: true
+        }
+      });
     }
 
     user.isEmailVerified = true;
+    user.isPhoneVerified = true;
+    user.previousVerificationToken = token;
     user.emailVerificationToken = null;
+    user.otp = null;
+    user.otpExpires = null;
     await user.save();
 
     const jwtToken = generateToken(user._id);
@@ -367,10 +393,12 @@ const verifyEmail = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || '',
         role: user.role,
         department: user.department,
         isApproved: user.isApproved,
-        isEmailVerified: true
+        isEmailVerified: true,
+        isPhoneVerified: true
       }
     });
   } catch (error) {

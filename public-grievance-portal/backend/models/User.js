@@ -58,6 +58,10 @@ const userSchema = new mongoose.Schema(
     emailVerificationToken: {
       type: String,
       default: null
+    },
+    previousVerificationToken: {
+      type: String,
+      default: null
     }
   },
   { timestamps: true }

@@ -112,28 +112,22 @@ const Navbar = () => {
                   </button>
                 )}
 
-                {/* Profile Button */}
-                <button
-                  type="button"
-                  className="user-badge clickable"
-                  onClick={() => setIsEditProfileOpen(true)}
-                  title="Click to view & edit profile"
-                >
+                {/* User Identity Display */}
+                <div className="user-badge" style={{ cursor: 'default' }}>
                   <User size={16} />
                   <span className="user-name">{user.name}</span>
                   <span className={`role-pill role-${user.role}`}>
                     {user.role?.toUpperCase()}
                   </span>
-                  <Edit3 size={13} className="badge-edit-icon" />
-                </button>
+                </div>
 
-                {/* Explicit Profile Button */}
+                {/* My Profile Button */}
                 <button
                   type="button"
                   onClick={() => setIsEditProfileOpen(true)}
                   className="btn btn-sm btn-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px', fontSize: '0.82rem' }}
-                  title="Account and Profile Settings"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', fontSize: '0.82rem', fontWeight: 600 }}
+                  title="View My Profile"
                 >
                   <User size={14} />
                   <span>My Profile</span>

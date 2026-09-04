@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Phone, Lock, X, Check, AlertCircle, Trash2, AlertTriangle } from 'lucide-react';
+import { User, Mail, Phone, Lock, X, Check, AlertCircle, Trash2, AlertTriangle, Edit3, ShieldCheck, Building2, Calendar } from 'lucide-react';
 import API from '../services/api';
 
 /**
  * EditProfileModal Component
- * Allows Citizens and Admins to edit their personal profile information independently,
- * and provide an option to delete their profile.
+ * Two Distinct Modes:
+ * 1. 'view' (My Profile): Displays user details, verification status, and account information.
+ * 2. 'edit' (Edit Profile): Allows editing name, email, phone, and password.
  */
 const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) => {
   const navigate = useNavigate();
+  const [mode, setMode] = useState('view'); // 'view' | 'edit'
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -23,9 +25,10 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
   const [profileUser, setProfileUser] = useState(currentUser);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Whenever modal opens, refresh profile from backend and initialize form
+  // Reset to view mode whenever modal opens and populate fresh user info
   useEffect(() => {
     if (isOpen) {
+      setMode('view');
       if (currentUser) {
         setProfileUser(currentUser);
         setName(currentUser.name || '');
@@ -38,7 +41,7 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
       setEmailVerifyUrl('');
       setShowConfirmDelete(false);
 
-      // Fetch fresh status from backend
+      // Fetch latest profile state from backend
       API.get('/auth/me')
         .then((res) => {
           if (res.data.success && res.data.user) {
@@ -90,7 +93,6 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
       if (res.data.success) {
         setMessage({ type: 'success', text: 'Profile updated successfully!' });
 
-        // Update local storage with the new user object
         const stored = JSON.parse(localStorage.getItem('grievance_user') || '{}');
         const updatedUser = {
           ...stored.user,
@@ -100,14 +102,17 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
         };
         stored.user = updatedUser;
         localStorage.setItem('grievance_user', JSON.stringify(stored));
+        setProfileUser(updatedUser);
 
         if (onProfileUpdated) {
           onProfileUpdated(updatedUser);
         }
 
+        // Return to view mode after saving
         setTimeout(() => {
-          onClose();
-        }, 1000);
+          setMode('view');
+          setMessage({ type: '', text: '' });
+        }, 800);
       }
     } catch (err) {
       setMessage({
@@ -141,15 +146,16 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
     }
   };
 
-  const isChiefOfficer = currentUser?.role === 'superadmin';
+  const isChiefOfficer = profileUser?.role === 'superadmin';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+        {/* MODAL HEADER */}
         <div className="modal-header">
           <div className="modal-title">
-            <User size={20} />
-            <h3>Edit {currentUser?.role === 'admin' ? 'Officer' : currentUser?.role === 'superadmin' ? 'Chief Officer' : 'Citizen'} Profile</h3>
+            {mode === 'view' ? <User size={20} /> : <Edit3 size={20} />}
+            <h3>{mode === 'view' ? 'My Profile' : 'Edit Profile'}</h3>
           </div>
           <button onClick={onClose} className="btn-close" title="Close">
             <X size={20} />
@@ -158,124 +164,250 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
 
         <div className="modal-body">
           {message.text && (
-            <div className={message.type === 'success' ? 'alert-success' : 'alert-error'}>
+            <div className={message.type === 'success' ? 'alert-success' : 'alert-error'} style={{ marginBottom: '16px' }}>
               {message.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
               <span>{message.text}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="modal-form">
-            <div className="form-group">
-              <label>Full Name</label>
-              <div className="input-with-icon">
-                <User size={18} />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter full name"
-                  required
-                />
+          {/* MODE 1: VIEW PROFILE ("MY PROFILE") */}
+          {mode === 'view' && (
+            <div>
+              {/* Profile Card Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: '#faf5ff', border: '1px solid #ede9fe', borderRadius: '12px', marginBottom: '20px' }}>
+                <div
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.4rem',
+                    fontWeight: 800,
+                    boxShadow: '0 4px 12px rgba(124, 58, 237, 0.25)',
+                    flexShrink: 0
+                  }}
+                >
+                  {(profileUser?.name || 'U').charAt(0).toUpperCase()}
+                </div>
+
+                <div>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', color: '#1e1b4b', fontWeight: 800 }}>
+                    {profileUser?.name}
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span className={`role-pill role-${profileUser?.role}`}>
+                      {profileUser?.role === 'superadmin' ? 'CHIEF OFFICER' : profileUser?.role === 'admin' ? 'OFFICER' : 'CITIZEN'}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                      {profileUser?.department || 'General Administration'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Details List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
+                {/* Email Item */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Mail size={18} style={{ color: '#6d28d9' }} />
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Email Address</span>
+                      <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>{profileUser?.email}</strong>
+                    </div>
+                  </div>
+                  <div>
+                    {profileUser?.isEmailVerified ? (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', background: '#d1fae5', padding: '3px 9px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        <Check size={11} /> Verified
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#d97706', background: '#fef3c7', padding: '3px 9px', borderRadius: '999px' }}>
+                        Unverified
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Phone Item */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Phone size={18} style={{ color: '#6d28d9' }} />
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Mobile Number</span>
+                      <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>
+                        {profileUser?.phone ? `+91 ${profileUser.phone}` : 'Not provided'}
+                      </strong>
+                    </div>
+                  </div>
+                  <div>
+                    {profileUser?.phone ? (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', background: '#d1fae5', padding: '3px 9px', borderRadius: '999px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        <Check size={11} /> Verified
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Optional</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Department Item */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+                  <Building2 size={18} style={{ color: '#6d28d9' }} />
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Department / Jurisdiction</span>
+                    <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>{profileUser?.department || 'General Public'}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons in View Mode */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setMode('edit')}
+                  className="btn btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 18px', fontSize: '0.88rem', fontWeight: 700 }}
+                >
+                  <Edit3 size={15} />
+                  <span>Edit Profile</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: '0.88rem' }}
+                >
+                  Close
+                </button>
               </div>
             </div>
+          )}
 
-            <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <label style={{ margin: 0 }}>Email Address</label>
-                {profileUser?.isEmailVerified ? (
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Check size={12} /> Verified
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '999px' }}>
-                    Unverified
-                  </span>
-                )}
-              </div>
-              <div className="input-with-icon">
-                <Mail size={18} />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter email address"
-                  required
-                />
+          {/* MODE 2: EDIT PROFILE FORM */}
+          {mode === 'edit' && (
+            <form onSubmit={handleSubmit} className="modal-form">
+              <div className="form-group">
+                <label>Full Name</label>
+                <div className="input-with-icon">
+                  <User size={18} />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter full name"
+                    required
+                  />
+                </div>
               </div>
 
-              {!profileUser?.isEmailVerified && (
-                <div style={{ marginTop: '8px', background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: '8px', padding: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                    <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>
-                      Verify your email to receive live grievance status updates.
+              <div className="form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={{ margin: 0 }}>Email Address</label>
+                  {profileUser?.isEmailVerified ? (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Check size={12} /> Verified
                     </span>
-                    <button
-                      type="button"
-                      onClick={handleSendEmailVerification}
-                      disabled={emailSending}
-                      className="btn"
-                      style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#7c3aed', color: '#ffffff', fontWeight: 600, borderRadius: '6px' }}
-                    >
-                      {emailSending ? 'Sending...' : '✉️ Send Verification Link'}
-                    </button>
-                  </div>
-
-                  {emailVerifyMsg && (
-                    <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#059669', background: '#ecfdf5', padding: '6px 10px', borderRadius: '6px' }}>
-                      <p style={{ margin: 0, fontWeight: 600 }}>{emailVerifyMsg}</p>
-                      {emailVerifyUrl && (
-                        <div style={{ marginTop: '6px' }}>
-                          <a
-                            href={emailVerifyUrl}
-                            className="btn btn-sm btn-primary"
-                            style={{ fontSize: '0.75rem', padding: '3px 10px', display: 'inline-block' }}
-                          >
-                            ⚡ Click Here to Verify Email Now
-                          </a>
-                        </div>
-                      )}
-                    </div>
+                  ) : (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '999px' }}>
+                      Unverified
+                    </span>
                   )}
                 </div>
-              )}
-            </div>
+                <div className="input-with-icon">
+                  <Mail size={18} />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter email address"
+                    required
+                  />
+                </div>
 
-            <div className="form-group">
-              <label>Phone Number (for sign in)</label>
-              <div className="input-with-icon">
-                <Phone size={18} />
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. 9876543210"
-                />
+                {!profileUser?.isEmailVerified && (
+                  <div style={{ marginTop: '8px', background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: '8px', padding: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+                        Verify your email to receive live grievance status updates.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSendEmailVerification}
+                        disabled={emailSending}
+                        className="btn"
+                        style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#7c3aed', color: '#ffffff', fontWeight: 600, borderRadius: '6px' }}
+                      >
+                        {emailSending ? 'Sending...' : '✉️ Send Verification Link'}
+                      </button>
+                    </div>
+
+                    {emailVerifyMsg && (
+                      <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#059669', background: '#ecfdf5', padding: '6px 10px', borderRadius: '6px' }}>
+                        <p style={{ margin: 0, fontWeight: 600 }}>{emailVerifyMsg}</p>
+                        {emailVerifyUrl && (
+                          <div style={{ marginTop: '6px' }}>
+                            <a
+                              href={emailVerifyUrl}
+                              className="btn btn-sm btn-primary"
+                              style={{ fontSize: '0.75rem', padding: '3px 10px', display: 'inline-block' }}
+                            >
+                              ⚡ Click Here to Verify Email Now
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
 
-            <div className="form-group">
-              <label>New Password (leave blank to keep current)</label>
-              <div className="input-with-icon">
-                <Lock size={18} />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter new password (optional)"
-                  minLength={6}
-                />
+              <div className="form-group">
+                <label>Phone Number (for SMS notifications)</label>
+                <div className="input-with-icon">
+                  <Phone size={18} />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button type="button" onClick={onClose} className="btn btn-secondary">
-                Cancel
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={loading}>
-                {loading ? 'Saving...' : 'Update Profile'}
-              </button>
-            </div>
-          </form>
+              <div className="form-group">
+                <label>New Password (leave blank to keep current)</label>
+                <div className="input-with-icon">
+                  <Lock size={18} />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter new password (optional)"
+                    minLength={6}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setMode('view')}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={loading}>
+                  {loading ? 'Saving Changes...' : 'Save Profile'}
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* DANGER ZONE: DELETE PROFILE */}
           <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid #fee2e2' }}>
