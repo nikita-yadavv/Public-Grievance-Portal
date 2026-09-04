@@ -42,18 +42,24 @@ const register = async (req, res) => {
       emailVerificationToken: verificationToken
     });
 
-    // Send verification email; failure is logged but doesn't break registration
+    // Send verification email
+    let emailResult = null;
     try {
-      await sendVerificationEmail(user.email, user.name, verificationToken);
+      emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
     } catch (emailErr) {
       console.error('[Email Error]:', emailErr.message);
     }
+
+    const verificationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
+    const previewUrl = emailResult?.previewUrl || null;
 
     if (isOfficer) {
       return res.status(201).json({
         success: true,
         isPendingApproval: true,
-        message: 'Officer registration submitted! Please check your email to verify your address. After verification, the Chief Municipal Officer will review and approve your account.',
+        verificationUrl,
+        previewUrl,
+        message: 'Officer registration submitted! Please verify your email to continue. After email verification, the Chief Municipal Officer will review and approve your account.',
         user: {
           id: user._id,
           name: user.name,
@@ -69,7 +75,9 @@ const register = async (req, res) => {
     res.status(201).json({
       success: true,
       needsVerification: true,
-      message: `Account created! We've sent a verification link to ${user.email}. Please verify your email before signing in.`,
+      verificationUrl,
+      previewUrl,
+      message: `Account created! Please verify your email to activate your account.`,
       user: {
         id: user._id,
         name: user.name,

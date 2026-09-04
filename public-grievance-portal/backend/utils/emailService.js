@@ -26,24 +26,31 @@ let testAccount = null;
 const initTransporter = async () => {
   if (transporter) return transporter;
 
-  // Create a one-time test SMTP account at Ethereal.email
-  testAccount = await nodemailer.createTestAccount();
+  try {
+    // Disable TLS rejectUnauthorized for development test account creation
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    testAccount = await nodemailer.createTestAccount();
 
-  transporter = nodemailer.createTransport({
-    host: 'smtp.ethereal.email',
-    port: 587,
-    secure: false,
-    auth: {
-      user: testAccount.user,
-      pass: testAccount.pass
-    }
-  });
+    transporter = nodemailer.createTransport({
+      host: 'smtp.ethereal.email',
+      port: 587,
+      secure: false,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
 
-  console.log('\n[Email Service]: Using Ethereal test account');
-  console.log(`[Email Service]: User: ${testAccount.user}`);
-  console.log('[Email Service]: Go to https://ethereal.email to see sent emails\n');
-
-  return transporter;
+    console.log('\n[Email Service]: Using Ethereal test account');
+    console.log(`[Email Service]: User: ${testAccount.user}`);
+    return transporter;
+  } catch (err) {
+    console.warn('[Email Service]: Could not connect to Ethereal SMTP, using direct verification link mode:', err.message);
+    return null;
+  }
 };
 
 /**
@@ -105,19 +112,32 @@ const sendVerificationEmail = async (toEmail, toName, token, baseUrl = 'http://l
     </html>
   `;
 
-  const info = await transport.sendMail({
-    from: '"Public Grievance Portal" <noreply@citygov.org>',
-    to: `"${toName}" <${toEmail}>`,
-    subject: '✉️ Verify your email — Public Grievance Portal',
-    html
-  });
+  try {
+    let previewUrl = null;
+    let messageId = null;
 
-  // Log the Ethereal preview URL so developers can view the email instantly
-  const previewUrl = nodemailer.getTestMessageUrl(info);
-  console.log(`\n[Email Service]: Verification email sent to ${toEmail}`);
-  console.log(`[Email Service]: ✨ Preview URL → ${previewUrl}\n`);
+    if (transport) {
+      const info = await transport.sendMail({
+        from: '"Public Grievance Portal" <noreply@citygov.org>',
+        to: `"${toName}" <${toEmail}>`,
+        subject: '✉️ Verify your email — Public Grievance Portal',
+        html
+      });
+      messageId = info.messageId;
+      previewUrl = nodemailer.getTestMessageUrl(info);
+      console.log(`\n[Email Service]: Verification email sent to ${toEmail}`);
+      if (previewUrl) {
+        console.log(`[Email Service]: ✨ Preview URL → ${previewUrl}\n`);
+      }
+    } else {
+      console.log(`\n[Email Service]: Local verification link for ${toEmail} → ${verifyLink}\n`);
+    }
 
-  return { messageId: info.messageId, previewUrl };
+    return { success: true, messageId, previewUrl, verifyLink };
+  } catch (err) {
+    console.error('[Email Service Error]:', err.message);
+    return { success: false, verifyLink, error: err.message };
+  }
 };
 
 module.exports = { sendVerificationEmail };

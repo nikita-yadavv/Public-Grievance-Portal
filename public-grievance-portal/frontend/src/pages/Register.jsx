@@ -39,25 +39,32 @@ const Register = () => {
     setLoading(true);
     setError('');
     setSuccessMsg('');
+    setVerificationUrl('');
+    setPreviewUrl('');
 
     try {
       const res = await API.post('/auth/register', formData);
       if (res.data.success) {
+        if (res.data.verificationUrl) {
+          setVerificationUrl(res.data.verificationUrl);
+        }
+        if (res.data.previewUrl) {
+          setPreviewUrl(res.data.previewUrl);
+        }
+
         if (res.data.isPendingApproval) {
-          // Officer pending approval (and email verification) message
           setSuccessMsg(res.data.message);
           setLoading(false);
           return;
         }
 
         if (res.data.needsVerification) {
-          // Citizen registered — must verify email before signing in
           setSuccessMsg(res.data.message);
           setLoading(false);
           return;
         }
 
-        // Fallback: if somehow token is returned, use it (shouldn't happen normally)
+        // Fallback
         localStorage.setItem(
           'grievance_user',
           JSON.stringify({
@@ -79,6 +86,9 @@ const Register = () => {
     }
   };
 
+  const [verificationUrl, setVerificationUrl] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
+
   return (
     <div className="auth-page">
       <div className="auth-card">
@@ -98,16 +108,45 @@ const Register = () => {
         )}
 
         {successMsg && (
-          <div className="alert-success-box">
-            <CheckCircle2 size={22} />
+          <div className="alert-success-box" style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
+            <CheckCircle2 size={36} style={{ color: '#10b981', margin: '0 auto 8px auto' }} />
             <div>
-              <strong>
-                {successMsg.includes('verify') || successMsg.includes('verification')
-                  ? '📧 Check Your Email!'
-                  : 'Application Submitted!'}
+              <strong style={{ fontSize: '1.15rem', display: 'block', marginBottom: '6px' }}>
+                🎉 Registration Submitted!
               </strong>
-              <p>{successMsg}</p>
-              <Link to="/login" className="btn btn-sm btn-primary" style={{ marginTop: '0.6rem' }}>
+              <p style={{ fontSize: '0.9rem', color: '#4b5563', marginBottom: '1rem' }}>{successMsg}</p>
+
+              {verificationUrl && (
+                <div style={{ margin: '1rem 0' }}>
+                  <a
+                    href={verificationUrl}
+                    className="btn btn-primary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: 700 }}
+                  >
+                    ⚡ Click Here to Verify Email (Instant)
+                  </a>
+                </div>
+              )}
+
+              {previewUrl && (
+                <div style={{ margin: '0.5rem 0' }}>
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                  >
+                    📬 Open Ethereal Test Mailbox
+                  </a>
+                </div>
+              )}
+
+              <p style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.75rem', background: '#f5f3ff', padding: '8px', borderRadius: '8px', border: '1px solid #ddd6fe' }}>
+                💡 <em>Development Mode:</em> Real emails are not dispatched across public internet without live SMTP credentials. Use the <strong>Instant Verify</strong> button above to activate your account.
+              </p>
+
+              <Link to="/login" className="btn btn-sm btn-secondary" style={{ marginTop: '1rem', display: 'inline-block' }}>
                 Back to Sign In
               </Link>
             </div>
