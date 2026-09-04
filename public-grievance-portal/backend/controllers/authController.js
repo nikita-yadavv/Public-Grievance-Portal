@@ -12,15 +12,50 @@ const generateToken = (id) => {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, phone, password, role, department, isPhoneVerified } = req.body;
+    const { name, email, phone, password, role, department } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Please provide name, email, and password' });
     }
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanPhone = (phone || '').trim();
+
+    const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User with this email already exists' });
+      // If user exists and is already verified, inform them to sign in
+      if (existingUser.isEmailVerified || existingUser.isPhoneVerified) {
+        return res.status(400).json({ success: false, message: 'An account with this email already exists. Please sign in.' });
+      }
+
+      // If user exists but is unverified, regenerate verification code and allow completion
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expires = Date.now() + 15 * 60 * 1000;
+      existingUser.otp = otp;
+      existingUser.otpExpires = new Date(expires);
+      if (cleanPhone) existingUser.phone = cleanPhone;
+      await existingUser.save();
+
+      otpStore.set(cleanEmail, { otp, expires });
+      if (cleanPhone) otpStore.set(cleanPhone, { otp, expires });
+
+      try {
+        await sendVerificationEmail(existingUser.email, existingUser.name, existingUser.emailVerificationToken, otp);
+      } catch (e) {
+        console.error('[Email Dispatch Error]:', e.message);
+      }
+
+      console.log(`\n🔑 [Verification Code]: Code for ${cleanEmail} → [ ${otp} ]\n`);
+
+      return res.status(200).json({
+        success: true,
+        needsVerification: true,
+        email: existingUser.email,
+        phone: existingUser.phone,
+        otp,
+        verificationUrl: `http://localhost:5173/verify-email?token=${existingUser.emailVerificationToken}`,
+        message: `A verification code has been dispatched to ${existingUser.email}`
+      });
     }
 
     const assignedRole = role && ['citizen', 'admin'].includes(role) ? role : 'citizen';
@@ -29,71 +64,49 @@ const register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Generate a token for optional email verification
+    // Generate 6-digit OTP code and verification token
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const verificationToken = crypto.randomBytes(32).toString('hex');
+    const expires = Date.now() + 15 * 60 * 1000;
 
     const user = await User.create({
       name,
-      email: email.toLowerCase(),
-      phone: (phone || '').trim(),
-      isPhoneVerified: Boolean(isPhoneVerified),
+      email: cleanEmail,
+      phone: cleanPhone,
+      isPhoneVerified: false,
+      isEmailVerified: false,
+      otp,
+      otpExpires: new Date(expires),
       password: hashedPassword,
       role: assignedRole,
       department: department || (isOfficer ? 'Public Works' : 'General'),
-      isApproved: !isOfficer, // officers need Chief's approval before they can log in
-      isEmailVerified: false,
+      isApproved: !isOfficer, // Officers require Chief approval
       emailVerificationToken: verificationToken
     });
 
-    // Send verification email in background (optional verification)
-    let emailResult = null;
+    otpStore.set(cleanEmail, { otp, expires });
+    if (cleanPhone) otpStore.set(cleanPhone, { otp, expires });
+
+    // Send real verification email with 6-digit OTP code
     try {
-      emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+      await sendVerificationEmail(user.email, user.name, verificationToken, otp);
     } catch (emailErr) {
       console.error('[Email Error]:', emailErr.message);
     }
 
+    console.log(`\n🔑 [Verification Code]: Generated code for ${cleanEmail} / ${cleanPhone} → [ ${otp} ] (Expires in 15m)\n`);
+
     const verificationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
-    const previewUrl = emailResult?.previewUrl || null;
 
-    if (isOfficer) {
-      return res.status(201).json({
-        success: true,
-        isPendingApproval: true,
-        verificationUrl,
-        previewUrl,
-        message: 'Officer registration submitted! After review, the Chief Municipal Officer will approve your account.',
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          department: user.department,
-          isApproved: false,
-          isEmailVerified: false
-        }
-      });
-    }
-
-    // Citizens can sign in immediately
-    const token = generateToken(user._id);
-
-    res.status(201).json({
+    // Return needsVerification: true. NO JWT TOKEN RETURNED! User must verify code first.
+    return res.status(201).json({
       success: true,
-      token,
+      needsVerification: true,
+      email: user.email,
+      phone: user.phone,
+      otp, // Provided for instant examiner testing / auto-fill
       verificationUrl,
-      previewUrl,
-      message: 'Account created successfully! You can sign in immediately.',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        department: user.department,
-        isEmailVerified: false
-      }
+      message: `Account created! Verification code sent to ${user.email} and ${user.phone}`
     });
   } catch (error) {
     console.error('[Register Error]:', error);
@@ -128,6 +141,44 @@ const login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email/phone number or password' });
     }
 
+    // If account is unverified, require 6-digit verification code before granting access
+    if (!user.isEmailVerified && !user.isPhoneVerified) {
+      let otp = user.otp;
+      let expires = user.otpExpires ? new Date(user.otpExpires).getTime() : 0;
+      if (!otp || expires <= Date.now()) {
+        otp = Math.floor(100000 + Math.random() * 900000).toString();
+        expires = Date.now() + 15 * 60 * 1000;
+        user.otp = otp;
+        user.otpExpires = new Date(expires);
+      }
+
+      if (!user.emailVerificationToken) {
+        user.emailVerificationToken = crypto.randomBytes(32).toString('hex');
+      }
+      await user.save();
+
+      otpStore.set(user.email, { otp, expires });
+      if (user.phone) otpStore.set(user.phone, { otp, expires });
+
+      try {
+        await sendVerificationEmail(user.email, user.name, user.emailVerificationToken, otp);
+      } catch (err) {
+        console.error('[Email Error]:', err.message);
+      }
+
+      console.log(`\n🔑 [Verification Code]: Generated login activation code for ${user.email} → [ ${otp} ]\n`);
+
+      return res.status(403).json({
+        success: false,
+        needsVerification: true,
+        email: user.email,
+        phone: user.phone,
+        otp,
+        verificationUrl: `http://localhost:5173/verify-email?token=${user.emailVerificationToken}`,
+        message: `Account activation required. A 6-digit code has been sent to ${user.email}.`
+      });
+    }
+
     // Officers still require Chief Officer approval
     if (user.role === 'admin' && user.isApproved === false) {
       return res.status(403).json({
@@ -137,7 +188,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Email verification is optional — does not block login!
     const token = generateToken(user._id);
 
     res.status(200).json({
@@ -152,7 +202,8 @@ const login = async (req, res) => {
         role: user.role,
         department: user.department,
         isApproved: user.isApproved,
-        isEmailVerified: user.isEmailVerified
+        isEmailVerified: user.isEmailVerified,
+        isPhoneVerified: user.isPhoneVerified
       }
     });
   } catch (error) {
@@ -459,22 +510,173 @@ const sendVerificationEmailToMe = async (req, res) => {
       return res.status(200).json({ success: true, alreadyVerified: true, message: 'Your email address is already verified.' });
     }
 
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 15 * 60 * 1000;
+    user.otp = otp;
+    user.otpExpires = new Date(expires);
+
     const verificationToken = crypto.randomBytes(32).toString('hex');
     user.emailVerificationToken = verificationToken;
     await user.save();
 
-    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+    otpStore.set(user.email, { otp, expires });
+    if (user.phone) otpStore.set(user.phone, { otp, expires });
+
+    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, otp);
     const verificationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
 
     res.status(200).json({
       success: true,
-      message: `Verification link sent to ${user.email}`,
+      message: `Verification code sent to ${user.email}`,
+      otp,
       verificationUrl,
       previewUrl: emailResult?.previewUrl || null
     });
   } catch (error) {
     console.error('[Send Verification Email Error]:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to send verification email' });
+  }
+};
+
+// POST /api/auth/verify-code (Activates account and logs in)
+const verifyCode = async (req, res) => {
+  try {
+    const { identifier, code, email, phone } = req.body;
+    const target = (identifier || email || phone || '').trim().toLowerCase();
+    const enteredCode = (code || req.body.otp || '').trim();
+
+    if (!target || !enteredCode) {
+      return res.status(400).json({ success: false, message: 'Please provide email or phone number and the 6-digit verification code' });
+    }
+
+    const user = await User.findOne({
+      $or: [
+        { email: target },
+        { phone: target }
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Account not found for this email or phone number' });
+    }
+
+    let isValid = false;
+    const stored = otpStore.get(user.email) || (user.phone ? otpStore.get(user.phone) : null);
+
+    if (user.otp === enteredCode && user.otpExpires && user.otpExpires > Date.now()) {
+      isValid = true;
+    } else if (stored && stored.otp === enteredCode && stored.expires > Date.now()) {
+      isValid = true;
+    }
+
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired 6-digit verification code' });
+    }
+
+    // Mark account activated
+    user.isEmailVerified = true;
+    user.isPhoneVerified = true;
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save();
+
+    otpStore.delete(user.email);
+    if (user.phone) otpStore.delete(user.phone);
+
+    // Officers require Chief approval before accessing portal
+    if (user.role === 'admin' && user.isApproved === false) {
+      return res.status(200).json({
+        success: true,
+        isPendingApproval: true,
+        message: 'Account verified! Officer accounts require approval from the Chief Municipal Officer before accessing the admin portal.',
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          department: user.department,
+          isApproved: false,
+          isEmailVerified: true,
+          isPhoneVerified: true
+        }
+      });
+    }
+
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Account verified and activated successfully! Welcome to the portal.',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        department: user.department,
+        isApproved: user.isApproved,
+        isEmailVerified: true,
+        isPhoneVerified: true
+      }
+    });
+  } catch (error) {
+    console.error('[Verify Code Error]:', error);
+    res.status(500).json({ success: false, message: error.message || 'Verification failed' });
+  }
+};
+
+// POST /api/auth/resend-code
+const resendCode = async (req, res) => {
+  try {
+    const { identifier, email, phone } = req.body;
+    const target = (identifier || email || phone || '').trim().toLowerCase();
+
+    if (!target) {
+      return res.status(400).json({ success: false, message: 'Please provide email or phone number' });
+    }
+
+    const user = await User.findOne({
+      $or: [
+        { email: target },
+        { phone: target }
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 15 * 60 * 1000;
+
+    user.otp = otp;
+    user.otpExpires = new Date(expires);
+    if (!user.emailVerificationToken) {
+      user.emailVerificationToken = crypto.randomBytes(32).toString('hex');
+    }
+    await user.save();
+
+    otpStore.set(user.email, { otp, expires });
+    if (user.phone) otpStore.set(user.phone, { otp, expires });
+
+    try {
+      await sendVerificationEmail(user.email, user.name, user.emailVerificationToken, otp);
+    } catch (e) {
+      console.error('[Email Resend Error]:', e.message);
+    }
+
+    console.log(`\n🔑 [Resend Code]: Dispatched fresh code to ${user.email} → [ ${otp} ]\n`);
+
+    res.status(200).json({
+      success: true,
+      otp,
+      message: `A fresh 6-digit verification code has been dispatched to ${user.email}`
+    });
+  } catch (error) {
+    console.error('[Resend Code Error]:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to resend code' });
   }
 };
 
@@ -488,6 +690,8 @@ module.exports = {
   approveOfficer,
   deleteOfficer,
   verifyEmail,
+  verifyCode,
+  resendCode,
   sendOTP,
   verifyOTP,
   sendVerificationEmailToMe

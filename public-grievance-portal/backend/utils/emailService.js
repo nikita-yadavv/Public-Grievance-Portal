@@ -25,6 +25,9 @@ const initTransporter = async () => {
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS
+        },
+        tls: {
+          rejectUnauthorized: false
         }
       });
       console.log(`\n[Email Service]: Real email transport active (${process.env.EMAIL_USER})`);
@@ -61,11 +64,19 @@ const initTransporter = async () => {
 };
 
 /**
- * Send an email verification link (Optional verification)
+ * Send an email verification code and activation link
  */
-const sendVerificationEmail = async (toEmail, toName, token, baseUrl = 'http://localhost:5173') => {
+const sendVerificationEmail = async (toEmail, toName, token, otpCode = null, baseUrl = 'http://localhost:5173') => {
   const transport = await initTransporter();
   const verifyLink = `${baseUrl}/verify-email?token=${token}`;
+
+  const otpBox = otpCode ? `
+    <div style="background: #f5f3ff; border: 2px dashed #7c3aed; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
+      <span style="font-size: 0.8rem; color: #6d28d9; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; display: block; margin-bottom: 6px;">Your 6-Digit Verification Code</span>
+      <div style="font-size: 2.2rem; font-weight: 800; color: #4c1d95; letter-spacing: 8px; font-family: 'Courier New', monospace;">${otpCode}</div>
+      <span style="font-size: 0.76rem; color: #6b7280; margin-top: 6px; display: block;">Enter this code on the screen to verify and activate your account (Valid for 15 minutes)</span>
+    </div>
+  ` : '';
 
   const html = `
     <!DOCTYPE html>
@@ -73,7 +84,7 @@ const sendVerificationEmail = async (toEmail, toName, token, baseUrl = 'http://l
     <head>
       <meta charset="UTF-8" />
       <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #faf8ff; margin: 0; padding: 20px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #faf8ff; margin: 0; padding: 20px; }
         .card { max-width: 520px; margin: 0 auto; background: #fff; border-radius: 16px;
                 border: 1px solid #ede9fe; padding: 36px; box-shadow: 0 4px 20px rgba(139,92,246,0.1); }
         .logo { font-size: 1.4rem; font-weight: 800; color: #6d28d9; margin-bottom: 4px; }
@@ -81,8 +92,8 @@ const sendVerificationEmail = async (toEmail, toName, token, baseUrl = 'http://l
         h2 { color: #2e1065; font-size: 1.3rem; margin-bottom: 12px; }
         p { color: #4b5563; font-size: 0.9rem; line-height: 1.6; margin-bottom: 16px; }
         .btn { display: inline-block; background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-               color: #fff; text-decoration: none; padding: 14px 32px; border-radius: 12px;
-               font-weight: 700; font-size: 1rem; margin: 8px 0 24px; }
+               color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 10px;
+               font-weight: 700; font-size: 0.95rem; margin: 8px 0 20px; text-align: center; }
         .note { font-size: 0.78rem; color: #9ca3af; border-top: 1px solid #f3f0ff;
                 padding-top: 16px; margin-top: 8px; }
         .link-text { word-break: break-all; color: #8b5cf6; font-size: 0.8rem; }
@@ -93,16 +104,19 @@ const sendVerificationEmail = async (toEmail, toName, token, baseUrl = 'http://l
         <div class="logo">🏛️ Public Grievance Portal</div>
         <div class="subtitle">Citizen Redressal &amp; Resolution System</div>
 
-        <h2>Verify Your Email Address</h2>
+        <h2>Verify Your Account</h2>
         <p>Hello <strong>${toName}</strong>,</p>
         <p>
           Thank you for registering with the Public Grievance Portal.
-          Click below if you wish to verify your email address:
+          Please use the 6-digit verification code below to activate your account:
         </p>
 
-        <a href="${verifyLink}" class="btn">✓ Verify My Email</a>
+        ${otpBox}
 
-        <p>This verification link will expire in <strong>24 hours</strong>.</p>
+        <p style="margin-bottom: 8px;">Or click the button below to verify instantly in your browser:</p>
+        <div style="text-align: center;">
+          <a href="${verifyLink}" class="btn">✓ Verify Account with 1-Click</a>
+        </div>
 
         <div class="note">
           If the button doesn't work, copy and paste this link into your browser:<br/>
@@ -125,23 +139,23 @@ const sendVerificationEmail = async (toEmail, toName, token, baseUrl = 'http://l
       const info = await transport.sendMail({
         from: fromAddress,
         to: `"${toName}" <${toEmail}>`,
-        subject: '✉️ Verify your email — Public Grievance Portal',
+        subject: `🔑 ${otpCode ? `${otpCode} is your verification code — ` : ''}Public Grievance Portal`,
         html
       });
       messageId = info.messageId;
       previewUrl = nodemailer.getTestMessageUrl(info);
-      console.log(`\n[Email Service]: Verification email dispatched to ${toEmail}`);
+      console.log(`\n[Email Service]: Verification email dispatched to ${toEmail} (Code: ${otpCode || 'N/A'})`);
       if (previewUrl) {
         console.log(`[Email Service]: ✨ Preview URL → ${previewUrl}\n`);
       }
     } else {
-      console.log(`\n[Email Service]: Local verification link for ${toEmail} → ${verifyLink}\n`);
+      console.log(`\n[Email Service]: Local verification link for ${toEmail} → ${verifyLink} (Code: ${otpCode})\n`);
     }
 
-    return { success: true, messageId, previewUrl, verifyLink };
+    return { success: true, messageId, previewUrl, verifyLink, otpCode };
   } catch (err) {
     console.error('[Email Service Error]:', err.message);
-    return { success: false, verifyLink, error: err.message };
+    return { success: false, verifyLink, otpCode, error: err.message };
   }
 };
 

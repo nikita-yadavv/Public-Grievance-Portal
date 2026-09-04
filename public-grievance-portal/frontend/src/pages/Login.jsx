@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogIn, Lock, Mail, AlertCircle, Sparkles } from 'lucide-react';
+import { LogIn, Lock, Mail, AlertCircle, Sparkles, KeyRound, X, RefreshCw } from 'lucide-react';
 import API from '../services/api';
 
 const Login = () => {
@@ -11,6 +11,14 @@ const Login = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Verification prompt modal state if unverified
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyData, setVerifyData] = useState({ email: '', phone: '', otp: '' });
+  const [enteredCode, setEnteredCode] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+  const [resending, setResending] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -44,8 +52,15 @@ const Login = () => {
       }
     } catch (err) {
       const data = err.response?.data;
-      if (data?.isEmailUnverified) {
-        setError('📧 Email not verified. Please check your inbox and click the verification link before signing in.');
+      if (data?.needsVerification) {
+        setVerifyData({
+          email: data.email || formData.email,
+          phone: data.phone || '',
+          otp: data.otp || ''
+        });
+        setEnteredCode('');
+        setVerifyError('');
+        setShowVerifyModal(true);
       } else if (data?.isPendingApproval) {
         setError('⏳ Your officer account is pending approval by the Chief Municipal Officer.');
       } else {
@@ -53,6 +68,75 @@ const Login = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Submit Verification Code from Login Modal
+  const handleVerifyCode = async (e) => {
+    e.preventDefault();
+    if (!enteredCode || enteredCode.trim().length < 6) {
+      setVerifyError('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    setVerifyLoading(true);
+    setVerifyError('');
+
+    try {
+      const res = await API.post('/auth/verify-code', {
+        identifier: verifyData.email,
+        code: enteredCode.trim()
+      });
+
+      if (res.data.success) {
+        if (res.data.isPendingApproval) {
+          setShowVerifyModal(false);
+          setError('⏳ Account verified! Officer accounts are awaiting approval from the Chief Municipal Officer.');
+          return;
+        }
+
+        localStorage.setItem(
+          'grievance_user',
+          JSON.stringify({
+            token: res.data.token,
+            user: res.data.user
+          })
+        );
+
+        setShowVerifyModal(false);
+
+        if (res.data.user?.role === 'admin' || res.data.user?.role === 'superadmin') {
+          navigate('/admin');
+        } else {
+          navigate('/dashboard');
+        }
+      }
+    } catch (err) {
+      setVerifyError(err.response?.data?.message || 'Invalid or expired verification code.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  // Resend code from login modal
+  const handleResendCode = async () => {
+    setResending(true);
+    setVerifyError('');
+    try {
+      const res = await API.post('/auth/resend-code', {
+        identifier: verifyData.email
+      });
+      if (res.data.success) {
+        setVerifyData((prev) => ({
+          ...prev,
+          otp: res.data.otp || prev.otp
+        }));
+        alert(`A new verification code has been dispatched to ${verifyData.email}`);
+      }
+    } catch (err) {
+      setVerifyError(err.response?.data?.message || 'Failed to resend code.');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -155,6 +239,122 @@ const Login = () => {
           <Link to="/register">Create an Account</Link>
         </div>
       </div>
+
+      {/* VERIFICATION REQUIRED MODAL */}
+      {showVerifyModal && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div className="modal-content" style={{ maxWidth: '440px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <KeyRound size={20} />
+                <h3>Activate Your Account</h3>
+              </div>
+              <button onClick={() => setShowVerifyModal(false)} className="btn-close" title="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p style={{ fontSize: '0.88rem', color: '#4b5563', marginBottom: '14px', lineHeight: 1.5 }}>
+                Your account requires activation. We dispatched a 6-digit code to <strong>{verifyData.email}</strong>.
+              </p>
+
+              {/* Demo auto-fill helper */}
+              {verifyData.otp && (
+                <div
+                  style={{
+                    background: '#f5f3ff',
+                    border: '1px solid #ddd6fe',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    marginBottom: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <div>
+                    <span style={{ fontSize: '0.76rem', color: '#6d28d9', fontWeight: 700, display: 'block' }}>
+                      💡 Quick Demo Code:
+                    </span>
+                    <strong style={{ fontSize: '1.25rem', letterSpacing: '4px', color: '#4c1d95' }}>
+                      {verifyData.otp}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEnteredCode(verifyData.otp)}
+                    className="btn btn-sm btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                  >
+                    Auto-Fill
+                  </button>
+                </div>
+              )}
+
+              {verifyError && (
+                <div className="alert-error" style={{ marginBottom: '12px' }}>
+                  <AlertCircle size={16} />
+                  <span style={{ fontSize: '0.84rem' }}>{verifyError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleVerifyCode} className="modal-form">
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label style={{ textAlign: 'center', display: 'block', fontSize: '0.85rem', fontWeight: 700 }}>
+                    Enter 6-Digit Code
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    autoFocus
+                    value={enteredCode}
+                    onChange={(e) => setEnteredCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="• • • • • •"
+                    style={{
+                      textAlign: 'center',
+                      fontSize: '1.6rem',
+                      letterSpacing: '8px',
+                      fontWeight: 800,
+                      color: '#4c1d95',
+                      padding: '10px'
+                    }}
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-block"
+                  disabled={verifyLoading || enteredCode.length < 6}
+                >
+                  {verifyLoading ? 'Verifying...' : 'Verify & Sign In'}
+                </button>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowVerifyModal(false)}
+                    style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.82rem', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={resending}
+                    style={{ background: 'none', border: 'none', color: '#7c3aed', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <RefreshCw size={13} className={resending ? 'spin' : ''} />
+                    <span>{resending ? 'Sending...' : 'Resend Code'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

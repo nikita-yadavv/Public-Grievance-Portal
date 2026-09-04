@@ -3,12 +3,14 @@ const router = express.Router();
 const {
   register, login, getMe, updateProfile, deleteProfile,
   getOfficers, approveOfficer, deleteOfficer, verifyEmail,
-  sendOTP, verifyOTP, sendVerificationEmailToMe
+  verifyCode, resendCode, sendOTP, verifyOTP, sendVerificationEmailToMe
 } = require('../controllers/authController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/verify-code', verifyCode);
+router.post('/resend-code', resendCode);
 router.post('/send-otp', sendOTP);
 router.post('/verify-otp', verifyOTP);
 router.post('/send-verification-email', protect, sendVerificationEmailToMe);
