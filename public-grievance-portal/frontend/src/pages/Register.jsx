@@ -286,42 +286,6 @@ const Register = () => {
               )}
             </div>
 
-            {/* Quick Demo Code helper for evaluation */}
-            {verificationData.otp && (
-              <div
-                style={{
-                  background: '#f5f3ff',
-                  border: '1px solid #ddd6fe',
-                  borderRadius: '10px',
-                  padding: '12px 14px',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Sparkles size={14} style={{ color: '#7c3aed' }} />
-                    <span style={{ fontSize: '0.78rem', color: '#6d28d9', fontWeight: 700 }}>
-                      Examiner / Quick Demo Code:
-                    </span>
-                  </div>
-                  <strong style={{ fontSize: '1.3rem', letterSpacing: '4px', color: '#4c1d95', display: 'block', marginTop: '2px' }}>
-                    {verificationData.otp}
-                  </strong>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEnteredCode(verificationData.otp)}
-                  className="btn btn-sm btn-secondary"
-                  style={{ fontSize: '0.75rem', padding: '5px 12px', fontWeight: 600 }}
-                >
-                  Auto-Fill
-                </button>
-              </div>
-            )}
-
             <div className="form-group">
               <label style={{ textAlign: 'center', display: 'block', fontWeight: 700 }}>
                 Enter 6-Digit Verification Code

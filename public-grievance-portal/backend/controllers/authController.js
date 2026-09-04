@@ -52,7 +52,6 @@ const register = async (req, res) => {
         needsVerification: true,
         email: existingUser.email,
         phone: existingUser.phone,
-        otp,
         verificationUrl: `http://localhost:5173/verify-email?token=${existingUser.emailVerificationToken}`,
         message: `A verification code has been dispatched to ${existingUser.email}`
       });
@@ -104,7 +103,6 @@ const register = async (req, res) => {
       needsVerification: true,
       email: user.email,
       phone: user.phone,
-      otp, // Provided for instant examiner testing / auto-fill
       verificationUrl,
       message: `Account created! Verification code sent to ${user.email} and ${user.phone}`
     });
@@ -173,7 +171,6 @@ const login = async (req, res) => {
         needsVerification: true,
         email: user.email,
         phone: user.phone,
-        otp,
         verificationUrl: `http://localhost:5173/verify-email?token=${user.emailVerificationToken}`,
         message: `Account activation required. A 6-digit code has been sent to ${user.email}.`
       });
@@ -528,7 +525,6 @@ const sendVerificationEmailToMe = async (req, res) => {
     res.status(200).json({
       success: true,
       message: `Verification code sent to ${user.email}`,
-      otp,
       verificationUrl,
       previewUrl: emailResult?.previewUrl || null
     });
@@ -671,7 +667,6 @@ const resendCode = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      otp,
       message: `A fresh 6-digit verification code has been dispatched to ${user.email}`
     });
   } catch (error) {

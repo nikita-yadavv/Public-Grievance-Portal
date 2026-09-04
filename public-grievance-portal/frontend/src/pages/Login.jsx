@@ -259,39 +259,6 @@ const Login = () => {
                 Your account requires activation. We dispatched a 6-digit code to <strong>{verifyData.email}</strong>.
               </p>
 
-              {/* Demo auto-fill helper */}
-              {verifyData.otp && (
-                <div
-                  style={{
-                    background: '#f5f3ff',
-                    border: '1px solid #ddd6fe',
-                    borderRadius: '8px',
-                    padding: '10px 14px',
-                    marginBottom: '14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  <div>
-                    <span style={{ fontSize: '0.76rem', color: '#6d28d9', fontWeight: 700, display: 'block' }}>
-                      💡 Quick Demo Code:
-                    </span>
-                    <strong style={{ fontSize: '1.25rem', letterSpacing: '4px', color: '#4c1d95' }}>
-                      {verifyData.otp}
-                    </strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEnteredCode(verifyData.otp)}
-                    className="btn btn-sm btn-secondary"
-                    style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                  >
-                    Auto-Fill
-                  </button>
-                </div>
-              )}
-
               {verifyError && (
                 <div className="alert-error" style={{ marginBottom: '12px' }}>
                   <AlertCircle size={16} />
