@@ -17,19 +17,60 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailVerifyMsg, setEmailVerifyMsg] = useState('');
+  const [emailVerifyUrl, setEmailVerifyUrl] = useState('');
+  const [profileUser, setProfileUser] = useState(currentUser);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Whenever modal opens or currentUser changes, populate with current user's data
+  // Whenever modal opens, refresh profile from backend and initialize form
   useEffect(() => {
-    if (isOpen && currentUser) {
-      setName(currentUser.name || '');
-      setEmail(currentUser.email || '');
-      setPhone(currentUser.phone || '');
+    if (isOpen) {
+      if (currentUser) {
+        setProfileUser(currentUser);
+        setName(currentUser.name || '');
+        setEmail(currentUser.email || '');
+        setPhone(currentUser.phone || '');
+      }
       setPassword('');
       setMessage({ type: '', text: '' });
+      setEmailVerifyMsg('');
+      setEmailVerifyUrl('');
       setShowConfirmDelete(false);
+
+      // Fetch fresh status from backend
+      API.get('/auth/me')
+        .then((res) => {
+          if (res.data.success && res.data.user) {
+            setProfileUser(res.data.user);
+            setName(res.data.user.name || '');
+            setEmail(res.data.user.email || '');
+            setPhone(res.data.user.phone || '');
+          }
+        })
+        .catch(() => {});
     }
   }, [isOpen, currentUser]);
+
+  const handleSendEmailVerification = async () => {
+    setEmailSending(true);
+    setEmailVerifyMsg('');
+    setEmailVerifyUrl('');
+
+    try {
+      const res = await API.post('/auth/send-verification-email');
+      if (res.data.success) {
+        setEmailVerifyMsg(res.data.message || 'Verification link dispatched to your email.');
+        if (res.data.verificationUrl) {
+          setEmailVerifyUrl(res.data.verificationUrl);
+        }
+      }
+    } catch (err) {
+      setEmailVerifyMsg(err.response?.data?.message || 'Failed to send verification email.');
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -139,7 +180,18 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
             </div>
 
             <div className="form-group">
-              <label>Email Address</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label style={{ margin: 0 }}>Email Address</label>
+                {profileUser?.isEmailVerified ? (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Check size={12} /> Verified
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '999px' }}>
+                    Unverified
+                  </span>
+                )}
+              </div>
               <div className="input-with-icon">
                 <Mail size={18} />
                 <input
@@ -150,6 +202,42 @@ const EditProfileModal = ({ isOpen, onClose, currentUser, onProfileUpdated }) =>
                   required
                 />
               </div>
+
+              {!profileUser?.isEmailVerified && (
+                <div style={{ marginTop: '8px', background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: '8px', padding: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+                      Verify your email to receive live grievance status updates.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSendEmailVerification}
+                      disabled={emailSending}
+                      className="btn"
+                      style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#7c3aed', color: '#ffffff', fontWeight: 600, borderRadius: '6px' }}
+                    >
+                      {emailSending ? 'Sending...' : '✉️ Send Verification Link'}
+                    </button>
+                  </div>
+
+                  {emailVerifyMsg && (
+                    <div style={{ marginTop: '8px', fontSize: '0.78rem', color: '#059669', background: '#ecfdf5', padding: '6px 10px', borderRadius: '6px' }}>
+                      <p style={{ margin: 0, fontWeight: 600 }}>{emailVerifyMsg}</p>
+                      {emailVerifyUrl && (
+                        <div style={{ marginTop: '6px' }}>
+                          <a
+                            href={emailVerifyUrl}
+                            className="btn btn-sm btn-primary"
+                            style={{ fontSize: '0.75rem', padding: '3px 10px', display: 'inline-block' }}
+                          >
+                            ⚡ Click Here to Verify Email Now
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="form-group">

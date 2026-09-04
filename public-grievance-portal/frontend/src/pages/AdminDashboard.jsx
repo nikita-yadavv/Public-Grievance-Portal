@@ -19,6 +19,7 @@ import {
 import API from '../services/api';
 import GrievanceCard from '../components/GrievanceCard';
 import StatsCard from '../components/StatsCard';
+import EmailVerificationBanner from '../components/EmailVerificationBanner';
 
 /**
  * Admin Dashboard
@@ -44,8 +45,27 @@ const AdminDashboard = () => {
   const [updating, setUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
 
-  const stored = localStorage.getItem('grievance_user');
-  const currentUser = stored ? JSON.parse(stored)?.user : null;
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('grievance_user') || '{}')?.user || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const fetchUserProfile = async () => {
+    try {
+      const res = await API.get('/auth/me');
+      if (res.data.success && res.data.user) {
+        setCurrentUser(res.data.user);
+        const stored = JSON.parse(localStorage.getItem('grievance_user') || '{}');
+        stored.user = res.data.user;
+        localStorage.setItem('grievance_user', JSON.stringify(stored));
+      }
+    } catch (err) {
+      console.error('Error fetching officer profile:', err);
+    }
+  };
 
   const categories = [
     'Roads & Infrastructure',
@@ -105,6 +125,7 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchStats();
     fetchGrievances();
+    fetchUserProfile();
     if (currentUser?.role === 'superadmin') {
       fetchOfficers();
     }
@@ -184,6 +205,9 @@ const AdminDashboard = () => {
 
   return (
     <div className="dashboard-container">
+      {/* Email Verification Reminder Banner */}
+      <EmailVerificationBanner currentUser={currentUser} onUserUpdated={(u) => setCurrentUser(u)} />
+
       {/* Header */}
       <div className="dashboard-header">
         <div>

@@ -3,6 +3,7 @@ import { PlusCircle, Clock, CheckCircle2, AlertTriangle, Send, RefreshCw, Filter
 import API from '../services/api';
 import GrievanceCard from '../components/GrievanceCard';
 import StatsCard from '../components/StatsCard';
+import EmailVerificationBanner from '../components/EmailVerificationBanner';
 
 /**
  * Citizen Dashboard
@@ -17,6 +18,13 @@ const CitizenDashboard = () => {
   const [activeTab, setActiveTab] = useState('list'); // 'list' or 'new'
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('grievance_user') || '{}')?.user || null;
+    } catch {
+      return null;
+    }
+  });
 
   // Form State
   const [formData, setFormData] = useState({
@@ -51,8 +59,24 @@ const CitizenDashboard = () => {
     }
   };
 
+  // Sync profile details
+  const fetchUserProfile = async () => {
+    try {
+      const res = await API.get('/auth/me');
+      if (res.data.success && res.data.user) {
+        setCurrentUser(res.data.user);
+        const stored = JSON.parse(localStorage.getItem('grievance_user') || '{}');
+        stored.user = res.data.user;
+        localStorage.setItem('grievance_user', JSON.stringify(stored));
+      }
+    } catch (err) {
+      console.error('Error syncing profile:', err);
+    }
+  };
+
   useEffect(() => {
     fetchMyGrievances();
+    fetchUserProfile();
   }, []);
 
   const handleInputChange = (e) => {
@@ -108,6 +132,9 @@ const CitizenDashboard = () => {
 
   return (
     <div className="dashboard-container">
+      {/* Email Verification Reminder Banner */}
+      <EmailVerificationBanner currentUser={currentUser} onUserUpdated={(u) => setCurrentUser(u)} />
+
       {/* Page Header */}
       <div className="dashboard-header">
         <div>

@@ -20,6 +20,18 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: ''
     },
+    isPhoneVerified: {
+      type: Boolean,
+      default: false
+    },
+    otp: {
+      type: String,
+      default: null
+    },
+    otpExpires: {
+      type: Date,
+      default: null
+    },
     password: {
       type: String,
       required: [true, 'Please provide a password'],

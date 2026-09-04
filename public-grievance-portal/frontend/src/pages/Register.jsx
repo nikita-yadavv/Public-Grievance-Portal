@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus, User, Mail, Phone, Lock, ShieldCheck, Building2, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { UserPlus, User, Mail, Phone, Lock, ShieldCheck, Building2, AlertCircle, CheckCircle2, Info, X, KeyRound } from 'lucide-react';
 import API from '../services/api';
 
 const Register = () => {
@@ -16,6 +16,16 @@ const Register = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verificationUrl, setVerificationUrl] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
+
+  // OTP Modal State
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [enteredOtp, setEnteredOtp] = useState('');
+  const [demoOtp, setDemoOtp] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
 
   const departments = [
     'Water Supply Department',
@@ -35,16 +45,100 @@ const Register = () => {
     setSuccessMsg('');
   };
 
+  // Step 1: When user submits registration form
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
     setSuccessMsg('');
     setVerificationUrl('');
     setPreviewUrl('');
 
+    // If phone number provided, send OTP and pop up OTP verification modal
+    if (formData.phone && formData.phone.trim().length >= 10) {
+      setLoading(true);
+      try {
+        const otpRes = await API.post('/auth/send-otp', { phone: formData.phone.trim() });
+        if (otpRes.data.success) {
+          setDemoOtp(otpRes.data.otp || '');
+          setEnteredOtp('');
+          setOtpError('');
+          setShowOtpModal(true);
+        }
+      } catch (otpErr) {
+        setError(otpErr.response?.data?.message || 'Failed to dispatch verification OTP. You can proceed without phone verification.');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // If no valid phone number, register directly
+      executeRegistration(false);
+    }
+  };
+
+  // Step 2: Verify OTP
+  const handleVerifyOtp = async (e) => {
+    if (e) e.preventDefault();
+    if (!enteredOtp || enteredOtp.trim().length < 4) {
+      setOtpError('Please enter the 6-digit verification OTP code.');
+      return;
+    }
+
+    setOtpLoading(true);
+    setOtpError('');
+
     try {
-      const res = await API.post('/auth/register', formData);
+      const res = await API.post('/auth/verify-otp', {
+        phone: formData.phone.trim(),
+        otp: enteredOtp.trim()
+      });
+
+      if (res.data.success) {
+        setIsPhoneVerified(true);
+        setShowOtpModal(false);
+        // Complete registration with verified phone
+        await executeRegistration(true);
+      }
+    } catch (err) {
+      setOtpError(err.response?.data?.message || 'Invalid or expired OTP code. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Step 2 (Alternative): Skip OTP and register directly
+  const handleSkipOtp = async () => {
+    setShowOtpModal(false);
+    await executeRegistration(false);
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const res = await API.post('/auth/send-otp', { phone: formData.phone.trim() });
+      if (res.data.success) {
+        setDemoOtp(res.data.otp || '');
+        setOtpError('');
+      }
+    } catch (err) {
+      setOtpError(err.response?.data?.message || 'Failed to resend OTP.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Step 3: Execute Registration API call
+  const executeRegistration = async (phoneVerifiedStatus = false) => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await API.post('/auth/register', {
+        ...formData,
+        isPhoneVerified: phoneVerifiedStatus
+      });
+
       if (res.data.success) {
         if (res.data.verificationUrl) {
           setVerificationUrl(res.data.verificationUrl);
@@ -59,26 +153,18 @@ const Register = () => {
           return;
         }
 
-        if (res.data.needsVerification) {
-          setSuccessMsg(res.data.message);
-          setLoading(false);
-          return;
+        // Store user and token if provided
+        if (res.data.token) {
+          localStorage.setItem(
+            'grievance_user',
+            JSON.stringify({
+              token: res.data.token,
+              user: res.data.user
+            })
+          );
         }
 
-        // Fallback
-        localStorage.setItem(
-          'grievance_user',
-          JSON.stringify({
-            token: res.data.token,
-            user: res.data.user
-          })
-        );
-
-        if (res.data.user.role === 'admin' || res.data.user.role === 'superadmin') {
-          navigate('/admin');
-        } else {
-          navigate('/dashboard');
-        }
+        setSuccessMsg(res.data.message || 'Account registered successfully!');
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
@@ -86,9 +172,6 @@ const Register = () => {
       setLoading(false);
     }
   };
-
-  const [verificationUrl, setVerificationUrl] = useState('');
-  const [previewUrl, setPreviewUrl] = useState('');
 
   return (
     <div className="auth-page">
@@ -110,38 +193,48 @@ const Register = () => {
 
         {successMsg && (
           <div className="alert-success-box" style={{ textAlign: 'center', padding: '1.75rem 1rem' }}>
-            <CheckCircle2 size={40} style={{ color: '#10b981', margin: '0 auto 10px auto' }} />
+            <CheckCircle2 size={44} style={{ color: '#10b981', margin: '0 auto 10px auto' }} />
             <div>
-              <strong style={{ fontSize: '1.25rem', display: 'block', marginBottom: '8px' }}>
+              <strong style={{ fontSize: '1.25rem', display: 'block', marginBottom: '8px', color: '#065f46' }}>
                 🎉 Account Registered Successfully!
               </strong>
               <p style={{ fontSize: '0.92rem', color: '#4b5563', marginBottom: '1.25rem' }}>
                 {formData.role === 'admin'
                   ? 'Officer registration submitted! After review, the Chief Municipal Officer will approve your access.'
-                  : 'You can now sign in immediately using your Phone Number or Email.'}
+                  : 'Your account is active! You can sign in using your Phone Number or Email.'}
               </p>
+
+              {isPhoneVerified && (
+                <div style={{ marginBottom: '1rem', display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#d1fae5', color: '#065f46', padding: '4px 12px', borderRadius: '999px', fontSize: '0.82rem', fontWeight: 700 }}>
+                  <CheckCircle2 size={14} /> Phone Number Verified (+91 {formData.phone})
+                </div>
+              )}
 
               <div style={{ marginBottom: '1.25rem' }}>
                 <Link
-                  to="/login"
+                  to={formData.role === 'admin' ? '/login' : '/dashboard'}
                   className="btn btn-primary"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: 700, fontSize: '0.95rem' }}
                 >
-                  Proceed to Sign In
+                  {formData.role === 'admin' ? 'Proceed to Sign In' : 'Go to Dashboard'}
                 </Link>
               </div>
 
               {verificationUrl && (
-                <div style={{ borderTop: '1px solid #ede9fe', paddingTop: '1rem', marginTop: '1rem' }}>
-                  <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: '8px' }}>
-                    Email verification is optional, but if you wish to verify your email address:
+                <div style={{ borderTop: '1px solid #ede9fe', paddingTop: '1rem', marginTop: '1rem', textAlign: 'left', background: '#fbf9ff', padding: '12px', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <Mail size={16} style={{ color: '#7c3aed' }} />
+                    <strong style={{ fontSize: '0.85rem', color: '#4c1d95' }}>Email Verification (Optional):</strong>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 8px 0' }}>
+                    Verify your email now to receive instant updates whenever municipal officers resolve your grievances:
                   </p>
                   <a
                     href={verificationUrl}
                     className="btn btn-sm btn-secondary"
-                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                    style={{ fontSize: '0.8rem', padding: '6px 14px', display: 'inline-block' }}
                   >
-                    ✉️ Verify Email Now (Optional)
+                    ✉️ Verify Email Address Now
                   </a>
                 </div>
               )}
@@ -182,7 +275,10 @@ const Register = () => {
             </div>
 
             <div className="form-group">
-              <label>Phone Number (for sign in & notifications)</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ margin: 0 }}>Phone Number (OTP Verification on submit)</label>
+                <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: 600 }}>SMS / Sign In</span>
+              </div>
               <div className="input-with-icon">
                 <Phone size={18} />
                 <input
@@ -258,7 +354,7 @@ const Register = () => {
             )}
 
             <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-              {loading ? 'Submitting Application...' : `Register as ${formData.role === 'admin' ? 'Officer (Pending Approval)' : 'Citizen'}`}
+              {loading ? 'Processing Registration...' : `Register as ${formData.role === 'admin' ? 'Officer (Pending Approval)' : 'Citizen'}`}
             </button>
           </form>
         )}
@@ -268,6 +364,131 @@ const Register = () => {
           <Link to="/login">Sign in here</Link>
         </div>
       </div>
+
+      {/* INTERACTIVE PHONE OTP VERIFICATION MODAL */}
+      {showOtpModal && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div className="modal-content" style={{ maxWidth: '440px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <KeyRound size={20} />
+                <h3>Mobile Verification (OTP)</h3>
+              </div>
+              <button onClick={() => setShowOtpModal(false)} className="btn-close" title="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p style={{ fontSize: '0.9rem', color: '#4b5563', marginBottom: '14px', lineHeight: 1.5 }}>
+                We sent a 6-digit one-time password to <strong>+91 {formData.phone}</strong>. Enter it below to verify your phone number.
+              </p>
+
+              {/* Quick Examiner Demo Box */}
+              {demoOtp && (
+                <div
+                  style={{
+                    background: '#f5f3ff',
+                    border: '1px solid #ddd6fe',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <div>
+                    <span style={{ fontSize: '0.78rem', color: '#6d28d9', fontWeight: 600, display: 'block' }}>
+                      💡 Examiner / Demo Code:
+                    </span>
+                    <strong style={{ fontSize: '1.25rem', letterSpacing: '3px', color: '#4c1d95' }}>
+                      {demoOtp}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEnteredOtp(demoOtp)}
+                    className="btn btn-sm btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                  >
+                    Auto-Fill
+                  </button>
+                </div>
+              )}
+
+              {otpError && (
+                <div className="alert-error" style={{ marginBottom: '12px' }}>
+                  <AlertCircle size={16} />
+                  <span style={{ fontSize: '0.85rem' }}>{otpError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleVerifyOtp} className="modal-form">
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ textAlign: 'center', display: 'block', fontSize: '0.85rem' }}>
+                    Enter 6-Digit OTP Code
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    autoFocus
+                    value={enteredOtp}
+                    onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder="• • • • • •"
+                    style={{
+                      textAlign: 'center',
+                      fontSize: '1.5rem',
+                      letterSpacing: '8px',
+                      fontWeight: 800,
+                      color: '#4c1d95',
+                      padding: '10px'
+                    }}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={otpLoading}
+                    style={{ background: 'none', border: 'none', color: '#7c3aed', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Resend Code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSkipOtp}
+                    style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.8rem', cursor: 'pointer' }}
+                  >
+                    Skip & Register Directly →
+                  </button>
+                </div>
+
+                <div className="modal-actions" style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpModal(false)}
+                    className="btn btn-secondary"
+                    style={{ flex: 1 }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={otpLoading || enteredOtp.length < 6}
+                    style={{ flex: 2 }}
+                  >
+                    {otpLoading ? 'Verifying...' : 'Verify OTP & Finish'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

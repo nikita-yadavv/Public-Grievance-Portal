@@ -12,7 +12,7 @@ const generateToken = (id) => {
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, phone, password, role, department } = req.body;
+    const { name, email, phone, password, role, department, isPhoneVerified } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Please provide name, email, and password' });
@@ -36,6 +36,7 @@ const register = async (req, res) => {
       name,
       email: email.toLowerCase(),
       phone: (phone || '').trim(),
+      isPhoneVerified: Boolean(isPhoneVerified),
       password: hashedPassword,
       role: assignedRole,
       department: department || (isOfficer ? 'Public Works' : 'General'),
@@ -360,6 +361,123 @@ const deleteProfile = async (req, res) => {
   }
 };
 
+// Map to store OTPs during registration or verification
+const otpStore = new Map();
+
+// POST /api/auth/send-otp
+const sendOTP = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone || phone.trim().length < 4) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid phone number' });
+    }
+
+    const cleanPhone = phone.trim();
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    otpStore.set(cleanPhone, { otp, expires });
+
+    const existingUser = await User.findOne({ phone: cleanPhone });
+    if (existingUser) {
+      existingUser.otp = otp;
+      existingUser.otpExpires = new Date(expires);
+      await existingUser.save();
+    }
+
+    console.log(`\n📱 [Phone OTP Service]: Verification code for ${cleanPhone} → [ ${otp} ] (Expires in 10m)\n`);
+
+    res.status(200).json({
+      success: true,
+      message: `OTP sent successfully to ${cleanPhone}`,
+      otp, // Provided for easy development / demo testing
+      expiresInMinutes: 10
+    });
+  } catch (error) {
+    console.error('[Send OTP Error]:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to send OTP' });
+  }
+};
+
+// POST /api/auth/verify-otp
+const verifyOTP = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    if (!phone || !otp) {
+      return res.status(400).json({ success: false, message: 'Please provide phone number and OTP' });
+    }
+
+    const cleanPhone = phone.trim();
+    const enteredOtp = otp.trim();
+
+    const stored = otpStore.get(cleanPhone);
+    let isValid = false;
+
+    if (stored && stored.otp === enteredOtp && stored.expires > Date.now()) {
+      isValid = true;
+      otpStore.delete(cleanPhone);
+    }
+
+    const user = await User.findOne({ phone: cleanPhone });
+    if (user && user.otp === enteredOtp && user.otpExpires && user.otpExpires > Date.now()) {
+      isValid = true;
+      user.isPhoneVerified = true;
+      user.otp = null;
+      user.otpExpires = null;
+      await user.save();
+    } else if (user && isValid) {
+      user.isPhoneVerified = true;
+      user.otp = null;
+      user.otpExpires = null;
+      await user.save();
+    }
+
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP code' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Phone number verified successfully!'
+    });
+  } catch (error) {
+    console.error('[Verify OTP Error]:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to verify OTP' });
+  }
+};
+
+// POST /api/auth/send-verification-email (Trigger verification from user profile)
+const sendVerificationEmailToMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(200).json({ success: true, alreadyVerified: true, message: 'Your email address is already verified.' });
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.emailVerificationToken = verificationToken;
+    await user.save();
+
+    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+    const verificationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
+
+    res.status(200).json({
+      success: true,
+      message: `Verification link sent to ${user.email}`,
+      verificationUrl,
+      previewUrl: emailResult?.previewUrl || null
+    });
+  } catch (error) {
+    console.error('[Send Verification Email Error]:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to send verification email' });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -369,5 +487,8 @@ module.exports = {
   getOfficers,
   approveOfficer,
   deleteOfficer,
-  verifyEmail
+  verifyEmail,
+  sendOTP,
+  verifyOTP,
+  sendVerificationEmailToMe
 };
